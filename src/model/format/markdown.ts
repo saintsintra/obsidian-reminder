@@ -43,6 +43,12 @@ export class Todo {
     return Todo.checkedStatuses.some((status) => status === this.check);
   }
 
+  // Leading-whitespace width (tabs expanded), used to derive parent/child nesting.
+  public get indent(): number {
+    const m = this.prefix.match(/^\s*/);
+    return m ? m[0]!.replace(/\t/g, "    ").length : 0;
+  }
+
   public setChecked(checked: boolean) {
     this.check = checked ? "x" : " ";
   }

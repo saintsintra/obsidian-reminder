@@ -41,6 +41,7 @@ class ReminderListItemView extends ItemView {
       props: {
         groups: this.remindersForView(),
         todoGroups: [],
+        childrenByTask: {},
         onOpenReminder: this.onOpenReminder,
         onComplete: this.onComplete,
         onChangeTime: this.onChangeTime,
@@ -84,7 +85,8 @@ class ReminderListItemView extends ItemView {
     if (this.view == null) {
       return;
     }
-    const todos = await this.plugin.fileSystem.collectTodos();
+    const { childrenByTask, todos } =
+      await this.plugin.fileSystem.collectPanelTasks();
     const byFolder = new Map<string, Array<PanelTodo>>();
     for (const todo of todos) {
       const folder = todo.file.split("/")[0] ?? "";
@@ -104,7 +106,7 @@ class ReminderListItemView extends ItemView {
         ),
       }));
     if (this.view != null) {
-      this.view.$set({ todoGroups });
+      this.view.$set({ todoGroups, childrenByTask });
     }
   }
 

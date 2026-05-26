@@ -12,6 +12,9 @@ export type PanelTodo = {
   body: string;
 };
 
+// A direct child of a reminder: a subtask (checkbox) or a comment (text line).
+export type PanelChild = PanelTodo & { kind: "subtask" | "comment" };
+
 function isInToDoFolder(path: string): boolean {
   return path.split("/").includes("To Do");
 }
@@ -31,10 +34,12 @@ export class ReminderPluginFileSystem {
         } else if (
           file instanceof TFile &&
           this.isMarkdownFile(file) &&
-          isInToDoFolder(file.path)
+          (isInToDoFolder(file.path) ||
+            this.reminders.fileToReminders.has(file.path))
         ) {
-          // The reminders didn't change, but an undated To Do checkbox in this
-          // file might have — refresh the panel's To Do section.
+          // Reminders didn't change, but an undated checkbox in this file might
+          // have — either a To Do item, or a subtask nested under a reminder.
+          // Refresh so the panel's To Do section + nested children stay current.
           this.onRemindersChanged();
         }
       }),
@@ -127,30 +132,116 @@ export class ReminderPluginFileSystem {
     await this.vault.modify(file, content.getContent());
   }
 
-  // Scans files under any "To Do" folder for undated, open checkboxes (i.e.
-  // checkboxes that are NOT reminders, which are surfaced separately).
-  async collectTodos(): Promise<PanelTodo[]> {
-    const result: PanelTodo[] = [];
-    const files = this.vault
-      .getMarkdownFiles()
-      .filter((f) => isInToDoFolder(f.path));
-    for (const file of files) {
-      const content = new Content(file.path, await this.vault.cachedRead(file));
-      const reminderLines = new Set(
-        content.getReminders(false).map((r) => r.rowNumber),
-      );
-      for (const todo of content.getTodos()) {
-        if (todo.isChecked() || reminderLines.has(todo.lineIndex)) {
-          continue;
-        }
-        result.push({
-          file: file.path,
-          lineIndex: todo.lineIndex,
-          body: todo.body,
-        });
+  // Scans files that contain reminders (anywhere) plus files under any "To Do"
+  // folder, and splits undated open checkboxes into:
+  //  - childrenByReminder: direct children of a dated reminder (keyed file::line)
+  //  - todos: everything else (flat To Do section, To Do folders only)
+  async collectPanelTasks(): Promise<{
+    childrenByTask: Record<string, PanelChild[]>;
+    todos: PanelTodo[];
+  }> {
+    const childrenByTask: Record<string, PanelChild[]> = {};
+    const todos: PanelTodo[] = [];
+    // Keys (file::line) of todos shown in the To Do section, so comments can
+    // attach to them too (not only to reminders).
+    const shownTodoKeys = new Set<string>();
+    const CHECKBOX = /^((> ?)*)?\s*[-*][ ]+\[(.)\]\s+(.*)$/;
+    const indentOf = (line: string) =>
+      (line.match(/^\s*/)?.[0] ?? "").replace(/\t/g, "    ").length;
+
+    const paths = new Set<string>(this.reminders.fileToReminders.keys());
+    for (const f of this.vault.getMarkdownFiles()) {
+      if (isInToDoFolder(f.path)) {
+        paths.add(f.path);
       }
     }
-    return result;
+
+    for (const path of paths) {
+      const file = this.vault.getAbstractFileByPath(path);
+      if (!(file instanceof TFile)) {
+        continue;
+      }
+      const text = await this.vault.cachedRead(file);
+      const content = new Content(path, text);
+      // Active (not-done) reminders only: a done reminder isn't shown in the
+      // panel, so its children fall back to the To Do section instead of
+      // nesting under a parent that's invisible.
+      const reminderLines = new Set(
+        content.getReminders().map((r) => r.rowNumber),
+      );
+      const inToDo = isInToDoFolder(path);
+
+      // One node per non-blank line: a checkbox task, or a plain text line
+      // (a potential "comment"). Indent drives parent/child nesting.
+      const nodes: Array<{
+        line: number;
+        indent: number;
+        isTask: boolean;
+        checked: boolean;
+        isReminder: boolean;
+        body: string;
+      }> = [];
+      const lines = text.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]!;
+        if (line.trim() === "") {
+          continue;
+        }
+        const m = line.match(CHECKBOX);
+        nodes.push({
+          line: i,
+          indent: indentOf(line),
+          isTask: m != null,
+          checked: m != null && m[3] !== " ",
+          isReminder: reminderLines.has(i),
+          body: m != null ? m[4]! : line.trim(),
+        });
+      }
+
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i]!;
+        // Direct parent = nearest preceding *checkbox* with a smaller indent.
+        let parent: (typeof nodes)[number] | null = null;
+        for (let j = i - 1; j >= 0; j--) {
+          if (nodes[j]!.isTask && nodes[j]!.indent < node.indent) {
+            parent = nodes[j]!;
+            break;
+          }
+        }
+        const parentKey = parent ? `${path}::${parent.line}` : null;
+
+        if (node.isTask) {
+          if (node.isReminder || node.checked) {
+            continue; // reminders show via their own rows; checked are done
+          }
+          // Open, undated checkbox: a subtask of a reminder, else a To Do item.
+          if (parent && parent.isReminder && parentKey) {
+            (childrenByTask[parentKey] ??= []).push({
+              file: path,
+              lineIndex: node.line,
+              body: node.body,
+              kind: "subtask",
+            });
+          } else if (inToDo) {
+            todos.push({ file: path, lineIndex: node.line, body: node.body });
+            shownTodoKeys.add(`${path}::${node.line}`);
+          }
+        } else if (
+          parent &&
+          parentKey &&
+          (parent.isReminder || shownTodoKeys.has(parentKey))
+        ) {
+          // Text line = comment, attached to a shown task (reminder or To Do).
+          (childrenByTask[parentKey] ??= []).push({
+            file: path,
+            lineIndex: node.line,
+            body: node.body,
+            kind: "comment",
+          });
+        }
+      }
+    }
+    return { childrenByTask, todos };
   }
 
   async completeTodo(filePath: string, lineIndex: number) {

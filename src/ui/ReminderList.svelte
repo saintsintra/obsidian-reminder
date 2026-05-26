@@ -1,13 +1,14 @@
 <script lang="typescript">
   import type { GroupedReminder, Reminder } from "../model/reminder";
   import type { DateTime } from "../model/time";
-  import type { PanelTodo } from "../plugin/filesystem";
+  import type { PanelTodo, PanelChild } from "../plugin/filesystem";
   import type { TodoGroup } from "../plugin/ui/reminder-list";
   import ReminderListByDate from "./ReminderListByDate.svelte";
   import Markdown from "./Markdown.svelte";
 
   export let groups: Array<GroupedReminder>;
   export let todoGroups: Array<TodoGroup> = [];
+  export let childrenByTask: Record<string, Array<PanelChild>> = {};
   export let onOpenReminder: (reminder: Reminder) => void;
   export let onComplete: (reminder: Reminder) => void = () => {};
   export let onChangeTime: (reminder: Reminder, time: DateTime) => void =
@@ -33,6 +34,9 @@
         {onOpenReminder}
         {onComplete}
         {onChangeTime}
+        {childrenByTask}
+        {onCompleteTodo}
+        {onOpenTodo}
         timeToString={(time) => group.timeToString(time)}
         {generateLink}
       />
@@ -60,6 +64,16 @@
                 <span class="todo-file">{fileName(todo.file)}</span>
               </button>
             </div>
+            {#each childrenByTask[`${todo.file}::${todo.lineIndex}`] ?? [] as child}
+              <div class="todo-comment hover-highlight">
+                <button
+                  class="comment-open"
+                  on:click={() => onOpenTodo(child)}
+                >
+                  <Markdown markdown={child.body} sourcePath={child.file} />
+                </button>
+              </div>
+            {/each}
           {/each}
         </details>
       {/each}
@@ -131,5 +145,29 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--text-faint);
+  }
+  .todo-comment {
+    display: flex;
+    align-items: center;
+    padding: 2px 3px 2px 2.2rem;
+    width: 100%;
+  }
+  .todo-comment:hover {
+    color: var(--text-normal);
+    background-color: var(--background-secondary-alt);
+  }
+  .comment-open {
+    background-color: transparent;
+    box-shadow: none;
+    display: inline-flex;
+    align-items: center;
+    flex-grow: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0;
+    text-align: left;
+    font-style: italic;
+    color: var(--text-muted);
   }
 </style>

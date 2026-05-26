@@ -1,6 +1,7 @@
 <script lang="typescript">
   import { DateTime } from "../model/time";
   import type { Reminder } from "../model/reminder";
+  import type { PanelTodo, PanelChild } from "../plugin/filesystem";
   import Markdown from "./Markdown.svelte";
   import IconText from "./IconText.svelte";
 
@@ -9,11 +10,21 @@
   export let onComplete: (reminder: Reminder) => void = () => {};
   export let onChangeTime: (reminder: Reminder, time: DateTime) => void =
     () => {};
+  export let childrenByTask: Record<string, Array<PanelChild>> = {};
+  export let onCompleteTodo: (todo: PanelTodo) => void = () => {};
+  export let onOpenTodo: (todo: PanelTodo) => void = () => {};
   export let timeToString = (time: DateTime) => time.format("HH:MM");
   export let generateLink: (reminder: Reminder) => string = () => "";
 
   // Key of the reminder whose inline date editor is currently open.
   let editingKey: string | null = null;
+  // Reminders whose child list is collapsed (children shown by default).
+  let collapsed: Record<string, boolean> = {};
+
+  function toggleCollapsed(key: string) {
+    collapsed[key] = !collapsed[key];
+    collapsed = collapsed;
+  }
 
   function inputValue(reminder: Reminder): string {
     return reminder.time.hasTimePart
@@ -40,56 +51,106 @@
   {:else}
     <div>
       {#each reminders as reminder}
-        <div class="reminder-list-item hover-highlight">
-          <input
-            type="checkbox"
-            class="reminder-check"
-            aria-label={`Complete ${reminder.title}`}
-            on:change={() => onComplete(reminder)}
-          />
-          <button
-            class="reminder-open"
-            aria-label={`[${reminder.time.toString()}] ${
-              reminder.title
-            } - ${reminder.getFileName()}`}
-            draggable="true"
-            on:dragstart={(e) => {
-              e.dataTransfer?.setData("text/plain", generateLink(reminder));
-            }}
-            on:click={() => {
-              onOpenReminder(reminder);
-            }}
-          >
-            <span class="reminder-time">
-              {timeToString(reminder.time)}
-            </span>
-            <div class="reminder-title-container">
-              <span class="reminder-title">
-                <Markdown markdown={reminder.title} sourcePath={reminder.file} />
-              </span>
-              <span class="reminder-file">
-                {reminder.getFileName()}
-              </span>
-            </div>
-          </button>
-          {#if editingKey === reminder.key()}
-            <!-- svelte-ignore a11y-autofocus -->
+        {@const children =
+          childrenByTask[`${reminder.file}::${reminder.rowNumber}`] ?? []}
+        <div class="reminder-entry">
+          <div class="reminder-list-item hover-highlight">
+            {#if children.length > 0}
+              <button
+                class="reminder-caret"
+                aria-label="Toggle subtasks"
+                on:click={() => toggleCollapsed(reminder.key())}
+              >
+                {collapsed[reminder.key()] ? "▸" : "▾"}
+              </button>
+            {:else}
+              <span class="reminder-caret-spacer" />
+            {/if}
             <input
-              type={reminder.time.hasTimePart ? "datetime-local" : "date"}
-              class="reminder-date-edit"
-              autofocus
-              value={inputValue(reminder)}
-              on:change={(e) => applyDate(reminder, e.currentTarget.value)}
-              on:blur={() => (editingKey = null)}
+              type="checkbox"
+              class="reminder-check"
+              aria-label={`Complete ${reminder.title}`}
+              on:change={() => onComplete(reminder)}
             />
-          {:else}
             <button
-              class="reminder-reschedule"
-              aria-label={`Reschedule ${reminder.title}`}
-              on:click={() => (editingKey = reminder.key())}
+              class="reminder-open"
+              aria-label={`[${reminder.time.toString()}] ${
+                reminder.title
+              } - ${reminder.getFileName()}`}
+              draggable="true"
+              on:dragstart={(e) => {
+                e.dataTransfer?.setData("text/plain", generateLink(reminder));
+              }}
+              on:click={() => {
+                onOpenReminder(reminder);
+              }}
             >
-              <IconText icon="clock" />
+              <span class="reminder-time">
+                {timeToString(reminder.time)}
+              </span>
+              <div class="reminder-title-container">
+                <span class="reminder-title">
+                  <Markdown
+                    markdown={reminder.title}
+                    sourcePath={reminder.file}
+                  />
+                </span>
+                <span class="reminder-file">
+                  {reminder.getFileName()}
+                </span>
+              </div>
             </button>
+            {#if editingKey === reminder.key()}
+              <!-- svelte-ignore a11y-autofocus -->
+              <input
+                type={reminder.time.hasTimePart ? "datetime-local" : "date"}
+                class="reminder-date-edit"
+                autofocus
+                value={inputValue(reminder)}
+                on:change={(e) => applyDate(reminder, e.currentTarget.value)}
+                on:blur={() => (editingKey = null)}
+              />
+            {:else}
+              <button
+                class="reminder-reschedule"
+                aria-label={`Reschedule ${reminder.title}`}
+                on:click={() => (editingKey = reminder.key())}
+              >
+                <IconText icon="clock" />
+              </button>
+            {/if}
+          </div>
+
+          {#if children.length > 0 && !collapsed[reminder.key()]}
+            <div class="reminder-children">
+              {#each children as child}
+                {#if child.kind === "subtask"}
+                  <div class="child-item hover-highlight">
+                    <input
+                      type="checkbox"
+                      class="reminder-check"
+                      aria-label={`Complete ${child.body}`}
+                      on:change={() => onCompleteTodo(child)}
+                    />
+                    <button
+                      class="child-open"
+                      on:click={() => onOpenTodo(child)}
+                    >
+                      <Markdown markdown={child.body} sourcePath={child.file} />
+                    </button>
+                  </div>
+                {:else}
+                  <div class="comment-item hover-highlight">
+                    <button
+                      class="comment-open"
+                      on:click={() => onOpenTodo(child)}
+                    >
+                      <Markdown markdown={child.body} sourcePath={child.file} />
+                    </button>
+                  </div>
+                {/if}
+              {/each}
+            </div>
           {/if}
         </div>
       {/each}
@@ -113,6 +174,19 @@
   .reminder-list-item:hover {
     color: var(--text-normal);
     background-color: var(--background-secondary-alt);
+  }
+  .reminder-caret {
+    flex-shrink: 0;
+    background-color: transparent;
+    box-shadow: none;
+    padding: 0;
+    width: 1rem;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .reminder-caret-spacer {
+    flex-shrink: 0;
+    width: 1rem;
   }
   .reminder-check {
     flex-shrink: 0;
@@ -171,6 +245,57 @@
     flex-shrink: 0;
     max-width: 11rem;
     font-size: 12px;
+  }
+  .reminder-children {
+    margin-left: 1.6rem;
+  }
+  .child-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 2px 3px;
+    width: 100%;
+  }
+  .child-item:hover {
+    color: var(--text-normal);
+    background-color: var(--background-secondary-alt);
+  }
+  .child-open {
+    background-color: transparent;
+    box-shadow: none;
+    justify-content: flex-start;
+    display: inline-flex;
+    align-items: center;
+    flex-grow: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0;
+    text-align: left;
+  }
+  .comment-item {
+    display: flex;
+    align-items: center;
+    padding: 2px 3px 2px 1.5rem;
+    width: 100%;
+  }
+  .comment-item:hover {
+    color: var(--text-normal);
+    background-color: var(--background-secondary-alt);
+  }
+  .comment-open {
+    background-color: transparent;
+    box-shadow: none;
+    display: inline-flex;
+    align-items: center;
+    flex-grow: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0;
+    text-align: left;
+    font-style: italic;
+    color: var(--text-muted);
   }
   .no-reminders {
     font-style: italic;
