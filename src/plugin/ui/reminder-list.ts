@@ -2,7 +2,11 @@ import { ItemView, TFile, View, WorkspaceLeaf } from "obsidian";
 import ReminderListView from "ui/ReminderList.svelte";
 import type ReminderPlugin from "main";
 import { Reminder, groupReminders } from "../../model/reminder";
+import type { DateTime } from "../../model/time";
+import type { PanelTodo } from "../filesystem";
 import { VIEW_TYPE_REMINDER_LIST } from "./constants";
+
+export type TodoGroup = { folder: string; todos: Array<PanelTodo> };
 
 class ReminderListItemView extends ItemView {
   private view?: ReminderListView;
@@ -11,6 +15,10 @@ class ReminderListItemView extends ItemView {
     private plugin: ReminderPlugin,
     leaf: WorkspaceLeaf,
     private onOpenReminder: (reminder: Reminder) => void,
+    private onComplete: (reminder: Reminder) => void,
+    private onChangeTime: (reminder: Reminder, time: DateTime) => void,
+    private onCompleteTodo: (todo: PanelTodo) => void,
+    private onOpenTodo: (todo: PanelTodo) => void,
   ) {
     super(leaf);
   }
@@ -32,7 +40,12 @@ class ReminderListItemView extends ItemView {
       target: (this as any).contentEl,
       props: {
         groups: this.remindersForView(),
+        todoGroups: [],
         onOpenReminder: this.onOpenReminder,
+        onComplete: this.onComplete,
+        onChangeTime: this.onChangeTime,
+        onCompleteTodo: this.onCompleteTodo,
+        onOpenTodo: this.onOpenTodo,
         generateLink: (reminder: Reminder): string => {
           const aFile = this.app.vault.getAbstractFileByPath(reminder.file);
           const destinationFile = this.app.workspace.getActiveFile();
@@ -49,6 +62,7 @@ class ReminderListItemView extends ItemView {
         },
       },
     });
+    this.refreshTodos();
   }
 
   reload() {
@@ -58,7 +72,40 @@ class ReminderListItemView extends ItemView {
     this.view.$set({
       groups: this.remindersForView(),
       onOpenReminder: this.onOpenReminder,
+      onComplete: this.onComplete,
+      onChangeTime: this.onChangeTime,
     });
+    this.refreshTodos();
+  }
+
+  // Async-scan undated To Do checkboxes and push them to the view grouped by
+  // top-level PARA folder. Kept separate from reminders (which are in-memory).
+  private async refreshTodos() {
+    if (this.view == null) {
+      return;
+    }
+    const todos = await this.plugin.fileSystem.collectTodos();
+    const byFolder = new Map<string, Array<PanelTodo>>();
+    for (const todo of todos) {
+      const folder = todo.file.split("/")[0] ?? "";
+      if (!byFolder.has(folder)) {
+        byFolder.set(folder, []);
+      }
+      byFolder.get(folder)!.push(todo);
+    }
+    const todoGroups: Array<TodoGroup> = [...byFolder.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([folder, items]) => ({
+        folder,
+        todos: items.sort((a, b) =>
+          a.file === b.file
+            ? a.lineIndex - b.lineIndex
+            : a.file.localeCompare(b.file),
+        ),
+      }));
+    if (this.view != null) {
+      this.view.$set({ todoGroups });
+    }
   }
 
   private remindersForView() {
@@ -90,6 +137,10 @@ export class ReminderListItemViewProxy {
   constructor(
     private plugin: ReminderPlugin,
     private onOpenReminder: (reminder: Reminder) => void,
+    private onComplete: (reminder: Reminder) => void,
+    private onChangeTime: (reminder: Reminder, time: DateTime) => void,
+    private onCompleteTodo: (todo: PanelTodo) => void,
+    private onOpenTodo: (todo: PanelTodo) => void,
   ) {
     // Automatically reflect display format changes in the Reminder List UI
     const formats = [
@@ -107,7 +158,15 @@ export class ReminderListItemViewProxy {
   }
 
   createView(leaf: WorkspaceLeaf): View {
-    return new ReminderListItemView(this.plugin, leaf, this.onOpenReminder);
+    return new ReminderListItemView(
+      this.plugin,
+      leaf,
+      this.onOpenReminder,
+      this.onComplete,
+      this.onChangeTime,
+      this.onCompleteTodo,
+      this.onOpenTodo,
+    );
   }
 
   openView(): void {

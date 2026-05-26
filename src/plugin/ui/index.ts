@@ -14,6 +14,7 @@ import { registerCommands } from "plugin/commands";
 import { monkeyPatchConsole } from "plugin/obsidian-hack/obsidian-debug-mobile";
 import { VIEW_TYPE_REMINDER_LIST } from "./constants";
 import { ReminderListItemViewProxy } from "./reminder-list";
+import type { PanelTodo } from "../filesystem";
 import { AutoComplete } from "./autocomplete";
 import type { AutoCompletableEditor } from "./autocomplete";
 import { buildCodeMirrorPlugin } from "./editor-extension";
@@ -34,6 +35,26 @@ export class ReminderPluginUI {
           return;
         }
         this.openReminderFile(reminder);
+      },
+      // On check off a reminder in the list
+      (reminder) => {
+        reminder.muteNotification = false;
+        this.plugin.fileSystem.updateReminder(reminder, true);
+        this.plugin.reminders.removeReminder(reminder);
+        this.plugin.data.save(true);
+      },
+      // On reschedule a reminder in the list
+      (reminder, time) => {
+        this.plugin.fileSystem.updateReminderTime(reminder, time);
+        this.plugin.data.save(true);
+      },
+      // On check off an undated To Do in the list
+      (todo: PanelTodo) => {
+        this.plugin.fileSystem.completeTodo(todo.file, todo.lineIndex);
+      },
+      // On open an undated To Do in the list
+      (todo: PanelTodo) => {
+        this.openFileAtLine(todo.file, todo.lineIndex);
       },
     );
     this.autoComplete = new AutoComplete(
@@ -138,28 +159,31 @@ export class ReminderPluginUI {
   }
 
   private async openReminderFile(reminder: Reminder) {
-    const leaf = this.plugin.app.workspace.getLeaf(false);
-
     console.log("Open reminder: ", reminder);
-    const file = this.plugin.app.vault.getAbstractFileByPath(reminder.file);
+    await this.openFileAtLine(reminder.file, reminder.rowNumber);
+  }
+
+  private async openFileAtLine(path: string, lineNumber: number) {
+    const leaf = this.plugin.app.workspace.getLeaf(false);
+    const file = this.plugin.app.vault.getAbstractFileByPath(path);
     if (!(file instanceof TFile)) {
       console.error("Cannot open file because it isn't a TFile: %o", file);
       return;
     }
 
-    // Open the reminder file and select the reminder
+    // Open the file and select the target line
     await leaf.openFile(file);
     if (!(leaf.view instanceof MarkdownView)) {
       return;
     }
-    const line = leaf.view.editor.getLine(reminder.rowNumber);
+    const line = leaf.view.editor.getLine(lineNumber);
     leaf.view.editor.setSelection(
       {
-        line: reminder.rowNumber,
+        line: lineNumber,
         ch: 0,
       },
       {
-        line: reminder.rowNumber,
+        line: lineNumber,
         ch: line.length,
       },
     );
