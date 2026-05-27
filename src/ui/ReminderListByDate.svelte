@@ -166,9 +166,11 @@
   }
   .reminder-list-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.3rem;
     padding: 3px;
+    margin-bottom: 0.35rem;
+    line-height: 1.45;
     width: 100%;
   }
   .reminder-list-item:hover {
@@ -198,29 +200,29 @@
     justify-content: flex-start;
     gap: 0.3rem;
     display: inline-flex;
-    align-items: center;
+    align-items: flex-start;
     flex-grow: 1;
-    overflow: hidden;
+    height: auto;
+    min-height: 0;
+    line-height: 1.45;
     padding: 0;
   }
   .reminder-time {
     display: inline-block;
+    flex-shrink: 0;
     font-size: 14px;
     font-family: monospace, serif;
   }
   .reminder-title-container {
     display: inline-flex;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    flex-direction: column;
     flex-grow: 1;
     justify-content: flex-start;
-    align-items: center;
+    align-items: flex-start;
   }
   .reminder-title {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
     flex-grow: 1;
     text-align: left;
   }
@@ -251,9 +253,11 @@
   }
   .child-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.3rem;
     padding: 2px 3px;
+    margin-bottom: 0.3rem;
+    line-height: 1.45;
     width: 100%;
   }
   .child-item:hover {
@@ -265,18 +269,22 @@
     box-shadow: none;
     justify-content: flex-start;
     display: inline-flex;
-    align-items: center;
+    align-items: flex-start;
     flex-grow: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    height: auto;
+    min-height: 0;
+    line-height: 1.45;
+    white-space: normal;
+    overflow-wrap: anywhere;
     padding: 0;
     text-align: left;
   }
   .comment-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     padding: 2px 3px 2px 1.5rem;
+    margin-bottom: 0.3rem;
+    line-height: 1.45;
     width: 100%;
   }
   .comment-item:hover {
@@ -287,11 +295,14 @@
     background-color: transparent;
     box-shadow: none;
     display: inline-flex;
-    align-items: center;
+    justify-content: flex-start;
+    align-items: flex-start;
     flex-grow: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    height: auto;
+    min-height: 0;
+    line-height: 1.45;
+    white-space: normal;
+    overflow-wrap: anywhere;
     padding: 0;
     text-align: left;
     font-style: italic;

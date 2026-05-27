@@ -109,9 +109,11 @@
   }
   .todo-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.3rem;
     padding: 3px 3px 3px 1rem;
+    margin-bottom: 0.35rem;
+    line-height: 1.45;
     width: 100%;
   }
   .todo-item:hover {
@@ -128,16 +130,17 @@
     justify-content: flex-start;
     gap: 0.3rem;
     display: inline-flex;
-    align-items: center;
+    align-items: flex-start;
     flex-grow: 1;
-    overflow: hidden;
+    height: auto;
+    min-height: 0;
+    line-height: 1.45;
     padding: 0;
     text-align: left;
   }
   .todo-title {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
     flex-grow: 1;
   }
   .todo-file {
@@ -148,8 +151,10 @@
   }
   .todo-comment {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     padding: 2px 3px 2px 2.2rem;
+    margin-bottom: 0.3rem;
+    line-height: 1.45;
     width: 100%;
   }
   .todo-comment:hover {
@@ -160,11 +165,14 @@
     background-color: transparent;
     box-shadow: none;
     display: inline-flex;
-    align-items: center;
+    justify-content: flex-start;
+    align-items: flex-start;
     flex-grow: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    height: auto;
+    min-height: 0;
+    line-height: 1.45;
+    white-space: normal;
+    overflow-wrap: anywhere;
     padding: 0;
     text-align: left;
     font-style: italic;
